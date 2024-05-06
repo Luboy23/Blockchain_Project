@@ -1,57 +1,60 @@
 package network
 
-// import (
-// 	"testing"
+import (
+	"io"
+	"testing"
 
-// 	"github.com/stretchr/testify/assert"
-// )
+	"github.com/stretchr/testify/assert"
+)
 
-// //	测试两个LocalTransport实例之间的连接功能。
-// //	创建两个LocalTransport实例，分别表示两个节点，然后测试它们之间的连接是否成功。
-// func TestConnect(t *testing.T) {
-// 	// 创建一个LocalTransport实例，地址为"A"。
-// 	tra := NewLocalTransport("A")
+// 测试连接功能
+func TestConnect(t *testing.T) {
+	tra := NewLocalTransport("A") // 创建一个名为"A"的本地传输实例
+	trb := NewLocalTransport("B") // 创建一个名为"B"的本地传输实例
 
-// 	// 创建一个LocalTransport实例，地址为"B"。
-// 	trb := NewLocalTransport("B")
+	tra.Connect(trb) // "A"连接到"B"
+	trb.Connect(tra) // "B"连接到"A"
+	assert.Equal(t, tra.peers[trb.Addr()], trb) // 断言"A"的peers中包含"B"
+	assert.Equal(t, trb.peers[tra.Addr()], tra) // 断言"B"的peers中包含"A"
+}
 
-// 	//	尝试将"A"连接到"B"。
-// 	tra.Connect(trb)
-// 	// 尝试将"B"连接到"A"。
-// 	trb.Connect(tra)
+// 测试发送消息功能
+func TestSendMessage(t *testing.T) {
+	tra := NewLocalTransport("A") // 创建一个名为"A"的本地传输实例
+	trb := NewLocalTransport("B") // 创建一个名为"B"的本地传输实例
 
-// 	// 断言"A"的peers映射中包含"B"，并且"B"的地址与"A"的实例相同。
-// 	assert.Equal(t,tra.peers[trb.addr], trb)
+	tra.Connect(trb) // "A"连接到"B"
+	trb.Connect(tra) // "B"连接到"A"
 
-// 	// 断言"B"的peers映射中包含"A"，并且"A"的地址与"B"的实例相同。
-// 	assert.Equal(t,trb.peers[tra.addr], tra)
-// }
+	msg := []byte("hello world") // 定义一个消息"hello world"
+	assert.Nil(t, tra.SendMessage(trb.addr, msg)) // "A"向"B"发送消息，断言没有错误
 
-// // 测试在两个LocalTransport实例之间发送消息的功能。
-// // 创建两个LocalTransport实例，分别表示两个节点，然后测试从一个节点发送消息到另一个节点的过程。
-// func TestSendMessage(t *testing.T) {
-// 	// 创建一个LocalTransport实例，地址为"A"。
-// 	tra := NewLocalTransport("A")
+	rpc := <-trb.Consume() // 从"B"的消费队列中获取一个消息
+	b, err := io.ReadAll(rpc.Payload) // 读取消息的负载
+	assert.Nil(t, err) // 断言没有错误
+	assert.Equal(t, b, msg) // 断言读取到的消息与发送的消息相同
+	assert.Equal(t, rpc.From, string(tra.addr)) // 断言消息来源是"A"
+}
 
-// 	// 创建一个LocalTransport实例，地址为"B"。
-// 	trb := NewLocalTransport("B")
+// 测试广播消息功能
+func TestBroadcast(t *testing.T) {
+	tra := NewLocalTransport("A") // 创建一个名为"A"的本地传输实例
+	trb := NewLocalTransport("B") // 创建一个名为"B"的本地传输实例
+	trc := NewLocalTransport("C") // 创建一个名为"C"的本地传输实例
 
-// 	//	尝试将"A"连接到"B"。
-// 	tra.Connect(trb)
-// 	// 尝试将"B"连接到"A"。
-// 	trb.Connect(tra)
+	tra.Connect(trb) // "A"连接到"B"
+	tra.Connect(trc) // "A"连接到"C"
 
-// 	// 定义要发送的消息。
-// 	msg := []byte("hello world")
-// 	// 断言从"A"发送消息到"B"不返回错误。
-// 	assert.Nil(t,tra.SendMessage(trb.addr,msg))
+	msg := []byte("foo") // 定义一个消息"foo"
+	assert.Nil(t, tra.Broadcast(msg)) // "A"广播消息，断言没有错误
 
-// 	// 从"B"的consumeCh通道中接收一个RPC消息。
-// 	rpc := <- trb.Consume()
+	rpcb := <-trb.Consume() // 从"B"的消费队列中获取一个消息
+	b, err := io.ReadAll(rpcb.Payload) // 读取消息的负载
+	assert.Nil(t, err) // 断言没有错误
+	assert.Equal(t, b, msg) // 断言读取到的消息与广播的消息相同
 
-// 	// 断言接收到的消息的负载与发送的消息相同。
-// 	assert.Equal(t, rpc.Payload, msg)
-
-// 	// 断言接收到的消息的发送者地址与"A"的地址相同。
-// 	assert.Equal(t, rpc.From, tra.addr)
-// }
+	rpcC := <-trc.Consume() // 从"C"的消费队列中获取一个消息
+	b, err = io.ReadAll(rpcC.Payload) // 读取消息的负载
+	assert.Nil(t, err) // 断言没有错误
+	assert.Equal(t, b, msg) // 断言读取到的消息与广播的消息相同
+}
